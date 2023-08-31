@@ -10,7 +10,7 @@ from stable_baselines3.common.buffers import ReplayBuffer
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 from stable_baselines3.common.policies import BasePolicy
 from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule
-from stable_baselines3.common.utils import get_linear_fn, get_parameters_by_name, polyak_update
+from stable_baselines3.common.utils import get_linear_fn, get_parameters_by_name, polyak_update, configure_logger
 from stable_baselines3.dqn.policies import CnnPolicy, DQNPolicy, MlpPolicy, MultiInputPolicy, QNetwork
 
 SelfDQN = TypeVar("SelfDQN", bound="DQN")
@@ -161,6 +161,11 @@ class DQN(OffPolicyAlgorithm):
                     f"which corresponds to {self.n_envs} steps."
                 )
 
+        # Not sure why this is now failing
+        # Configure logger's outputs if no logger was passed
+        if not self._custom_logger:
+            self._logger = configure_logger(self.verbose, self.tensorboard_log, "run" , True)
+
     def _create_aliases(self) -> None:
         self.q_net = self.policy.q_net
         self.q_net_target = self.policy.q_net_target
@@ -242,6 +247,7 @@ class DQN(OffPolicyAlgorithm):
         :return: the model's action and the next state
             (used in recurrent policies)
         """
+        computed=False
         if not deterministic and np.random.rand() < self.exploration_rate:
             if self.policy.is_vectorized_observation(observation):
                 if isinstance(observation, dict):
@@ -253,7 +259,9 @@ class DQN(OffPolicyAlgorithm):
                 action = np.array(self.action_space.sample())
         else:
             action, state = self.policy.predict(observation, state, episode_start, deterministic)
-        return action, state
+            computed=True
+        # add computed flag
+        return action, state, computed
 
     def learn(
         self: SelfDQN,

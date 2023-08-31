@@ -319,6 +319,8 @@ class OffPolicyAlgorithm(BaseAlgorithm):
             progress_bar,
         )
 
+        eps_steps = 0
+
         callback.on_training_start(locals(), globals())
 
         assert self.env is not None, "You must set the environment before calling learn()"
@@ -334,6 +336,8 @@ class OffPolicyAlgorithm(BaseAlgorithm):
                 replay_buffer=self.replay_buffer,
                 log_interval=log_interval,
             )
+
+            eps_steps += rollout.episode_timesteps
 
             if not rollout.continue_training:
                 break
@@ -382,12 +386,14 @@ class OffPolicyAlgorithm(BaseAlgorithm):
         if self.num_timesteps < learning_starts and not (self.use_sde and self.use_sde_at_warmup):
             # Warmup phase
             unscaled_action = np.array([self.action_space.sample() for _ in range(n_envs)])
+            computed_action = False
         else:
             # Note: when using continuous actions,
             # we assume that the policy uses tanh to scale the action
             # We use non-deterministic action in the case of SAC, for TD3, it does not matter
             assert self._last_obs is not None, "self._last_obs was not set"
-            unscaled_action, _ = self.predict(self._last_obs, deterministic=False)
+            #unscaled_action, _ = self.predict(self._last_obs, deterministic=False)
+            unscaled_action, computed_action, _ = self.predict(self._last_obs, deterministic=False)
 
         # Rescale the action from [low, high] to [-1, 1]
         if isinstance(self.action_space, spaces.Box):
@@ -404,7 +410,7 @@ class OffPolicyAlgorithm(BaseAlgorithm):
             # Discrete case, no need to normalize or clip
             buffer_action = unscaled_action
             action = buffer_action
-        return action, buffer_action
+        return action, buffer_action, computed_action
 
     def _dump_logs(self) -> None:
         """
@@ -554,7 +560,9 @@ class OffPolicyAlgorithm(BaseAlgorithm):
                 self.actor.reset_noise(env.num_envs)
 
             # Select action randomly or according to policy
-            actions, buffer_actions = self._sample_action(learning_starts, action_noise, env.num_envs)
+            # actions, buffer_actions = self._sample_action(learning_starts, action_noise, env.num_envs)
+            # EDIT: add parameter to identify computed or random action
+            actions, buffer_actions, computed_actions = self._sample_action(learning_starts, action_noise, env.num_envs)
 
             # Rescale and perform action
             new_obs, rewards, dones, infos = env.step(actions)
