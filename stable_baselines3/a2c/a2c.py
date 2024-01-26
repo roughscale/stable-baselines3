@@ -8,7 +8,7 @@ from stable_baselines3.common.buffers import RolloutBuffer
 from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
 from stable_baselines3.common.policies import ActorCriticCnnPolicy, ActorCriticPolicy, BasePolicy, MultiInputActorCriticPolicy
 from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule
-from stable_baselines3.common.utils import explained_variance
+from stable_baselines3.common.utils import explained_variance, configure_logger
 
 SelfA2C = TypeVar("SelfA2C", bound="A2C")
 
@@ -125,6 +125,10 @@ class A2C(OnPolicyAlgorithm):
         if use_rms_prop and "optimizer_class" not in self.policy_kwargs:
             self.policy_kwargs["optimizer_class"] = th.optim.RMSprop
             self.policy_kwargs["optimizer_kwargs"] = dict(alpha=0.99, eps=rms_prop_eps, weight_decay=0)
+
+        # set up logger if no logger was passed
+        if not self._custom_logger:
+            self._logger = configure_logger(self.verbose, self.tensorboard_log, "run" , True)
 
         if _init_setup_model:
             self._setup_model()
