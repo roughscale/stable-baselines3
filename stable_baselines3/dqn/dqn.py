@@ -7,6 +7,7 @@ from gymnasium import spaces
 from torch.nn import functional as F
 
 from stable_baselines3.common.buffers import ReplayBuffer
+from stable_baselines3.common.prioritized_replay_buffer import PrioritizedReplayBuffer
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 from stable_baselines3.common.policies import BasePolicy
 from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule
@@ -220,16 +221,22 @@ class DQN(OffPolicyAlgorithm):
             current_q_values = th.gather(current_q_values, dim=1, index=replay_data.actions.long())
             #print(current_q_values.shape) # [batch_size,1]
 
-            # does this mean we perform the below loss function as
-            # loss = F.smooth_l1_loss(current_q_values,target_q_values) * weights)?
-            if weights not in replay_buffer:
-                weights = th.ones_like(current_q_values)
+            # Special case when using PrioritizedReplayBuffer (PER)
+            if isinstance(self.replay_buffer, PrioritizedReplayBuffer):
+                # TD error in absolute value
+                td_error = th.abs(current_q_values - target_q_values)
+                #print(td_error)
+                # Weighted Huber loss using importance sampling weights
+                loss = (replay_data.weights * th.where(td_error < 1.0, 0.5 * td_error**2, td_error - 0.5)).mean()
+                #print(loss)
+                # Update priorities, they will be proportional to the td error
+                assert replay_data.leaf_nodes_indices is not None, "Node leaf node indices provided"
+                self.replay_buffer.update_priorities(
+                    replay_data.leaf_nodes_indices, td_error, self._current_progress_remaining
+                )
             else:
-                weights = replay_buffer.weights
-                # TODO: assert shape of weights
-
-            # Compute Huber loss (less sensitive to outliers)
-            loss = F.smooth_l1_loss(current_q_values, target_q_values) * weights
+                # Compute Huber loss (less sensitive to outliers)
+                loss = F.smooth_l1_loss(current_q_values, target_q_values)
             losses.append(loss.item())
 
             # Optimize the policy
@@ -238,12 +245,6 @@ class DQN(OffPolicyAlgorithm):
             # Clip gradient norm
             th.nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)
             self.policy.optimizer.step()
-
-            # updated buffer with td_error weights if PriortizedReplay
-            if isinstance(replay_buffer,PrioritizedReplayBuffer):
-                with th.no_grad():
-                    td_errors = th.abs(current_q_values,target_q_values)
-                replay_buffer.update_priorities(replay_buffer.sample_idxs, td_errors)
 
         # Increase update counter
         self._n_updates += gradient_steps
