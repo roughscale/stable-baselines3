@@ -11,7 +11,7 @@ from stable_baselines3.common.prioritized_replay_buffer import PrioritizedReplay
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 from stable_baselines3.common.policies import BasePolicy
 from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule
-from stable_baselines3.common.utils import get_linear_fn, get_parameters_by_name, polyak_update, configure_logger
+from stable_baselines3.common.utils import get_linear_fn, get_parameters_by_name, polyak_update
 from stable_baselines3.dqn.policies import CnnPolicy, DQNPolicy, MlpPolicy, MultiInputPolicy, QNetwork
 
 SelfDQN = TypeVar("SelfDQN", bound="DQN")
@@ -162,11 +162,6 @@ class DQN(OffPolicyAlgorithm):
                     f"which corresponds to {self.n_envs} steps."
                 )
 
-        # Not sure why this is now failing
-        # Configure logger's outputs if no logger was passed
-        if not self._custom_logger:
-            self._logger = configure_logger(self.verbose, self.tensorboard_log, "run" , True)
-
     def _create_aliases(self) -> None:
         self.q_net = self.policy.q_net
         self.q_net_target = self.policy.q_net_target
@@ -185,8 +180,7 @@ class DQN(OffPolicyAlgorithm):
             polyak_update(self.batch_norm_stats, self.batch_norm_stats_target, 1.0)
 
         self.exploration_rate = self.exploration_schedule(self._current_progress_remaining)
-        # we are now logging on every timestep
-        self.logger.record("rollout/exploration_rate", self.exploration_rate,exclude="stdout")
+        self.logger.record("rollout/exploration_rate", self.exploration_rate)
 
     def train(self, gradient_steps: int, batch_size: int = 100) -> None:
         # Switch to train mode (this affects batch norm / dropout)
@@ -198,38 +192,29 @@ class DQN(OffPolicyAlgorithm):
         for _ in range(gradient_steps):
             # Sample replay buffer
             replay_data = self.replay_buffer.sample(batch_size, env=self._vec_normalize_env)  # type: ignore[union-attr]
-            #print(type(replay_data))
 
             with th.no_grad():
                 # Compute the next Q-values using the target network
                 next_q_values = self.q_net_target(replay_data.next_observations)
-                #print(next_q_values.shape) # [batch_size,n_actions]
                 # Follow greedy policy: use the one with the highest value
                 next_q_values, _ = next_q_values.max(dim=1)
-                #print(next_q_values.shape) # [batch_size]
                 # Avoid potential broadcast issue
                 next_q_values = next_q_values.reshape(-1, 1)
-                #print(next_q_values.shape) # [batch_size,1]
                 # 1-step TD target
                 target_q_values = replay_data.rewards + (1 - replay_data.dones) * self.gamma * next_q_values
-                #print(target_q_values.shape) #[batch_size,n_envs]
 
             # Get current Q-values estimates
             current_q_values = self.q_net(replay_data.observations)
-            #print(current_q_values.shape) # [batch_size,n_actions]
 
             # Retrieve the q-values for the actions from the replay buffer
             current_q_values = th.gather(current_q_values, dim=1, index=replay_data.actions.long())
-            #print(current_q_values.shape) # [batch_size,1]
 
             # Special case when using PrioritizedReplayBuffer (PER)
             if isinstance(self.replay_buffer, PrioritizedReplayBuffer):
                 # TD error in absolute value
                 td_error = th.abs(current_q_values - target_q_values)
-                #print(td_error)
                 # Weighted Huber loss using importance sampling weights
                 loss = (replay_data.weights * th.where(td_error < 1.0, 0.5 * td_error**2, td_error - 0.5)).mean()
-                #print(loss)
                 # Update priorities, they will be proportional to the td error
                 assert replay_data.leaf_nodes_indices is not None, "Node leaf node indices provided"
                 self.replay_buffer.update_priorities(

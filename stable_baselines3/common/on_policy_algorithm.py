@@ -178,10 +178,6 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                 actions, values, log_probs = self.policy(obs_tensor)
             actions = actions.cpu().numpy()
 
-            print(actions) #single element
-            print(values) # single element
-            #print(log_probs) #single elemnent
-
             # Rescale and perform action
             clipped_actions = actions
 

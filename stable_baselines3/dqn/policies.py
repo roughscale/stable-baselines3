@@ -164,8 +164,6 @@ class DQNPolicy(BasePolicy):
         self.q_net_target = self.make_q_net()
         self.q_net_target.load_state_dict(self.q_net.state_dict())
         self.q_net_target.set_training_mode(False)
-        #print("network parameters")
-        #print(list(self.parameters()))
 
         # Setup optimizer with initial learning rate
         self.optimizer = self.optimizer_class(  # type: ignore[call-arg]

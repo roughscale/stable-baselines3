@@ -10,7 +10,7 @@ from stable_baselines3.common.buffers import RolloutBuffer
 from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
 from stable_baselines3.common.policies import ActorCriticCnnPolicy, ActorCriticPolicy, BasePolicy, MultiInputActorCriticPolicy
 from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule
-from stable_baselines3.common.utils import explained_variance, get_schedule_fn, configure_logger
+from stable_baselines3.common.utils import explained_variance, get_schedule_fn
 
 SelfPPO = TypeVar("SelfPPO", bound="PPO")
 
@@ -171,10 +171,6 @@ class PPO(OnPolicyAlgorithm):
             self._setup_model()
 
     def _setup_model(self) -> None:
-        # set up logger if no logger was passed
-        if not self._custom_logger:
-          self._logger = configure_logger(self.verbose, self.tensorboard_log, "run" , True)
-
         super()._setup_model()
 
         # Initialize schedules for policy/value clipping

@@ -37,12 +37,9 @@ class BaseCallback(ABC):
     # The RL model
     # Type hint as string to avoid circular import
     model: "base_class.BaseAlgorithm"
-    ##logger: Logger
 
     def __init__(self, verbose: int = 0):
         super().__init__()
-        ### An alias for self.model.get_env(), the environment used for training
-        ##self.training_env = None  # type: Union[gym.Env, VecEnv, None]
         # Number of time the callback was called
         self.n_calls = 0  # type: int
         # n_envs * n times env.step() was called
@@ -73,9 +70,6 @@ class BaseCallback(ABC):
         RL model and the training environment for convenience.
         """
         self.model = model
-        # now implemented by property annotations
-        #self.training_env = model.get_env()
-        #self.logger = model.logger
         self._init_callback()
 
     def _init_callback(self) -> None:
