@@ -7,6 +7,7 @@ from gymnasium import spaces
 from torch.nn import functional as F
 
 from stable_baselines3.common.buffers import ReplayBuffer
+from stable_baselines3.common.prioritized_replay_buffer import PrioritizedReplayBuffer
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 from stable_baselines3.common.policies import BasePolicy
 from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule
@@ -208,8 +209,20 @@ class DQN(OffPolicyAlgorithm):
             # Retrieve the q-values for the actions from the replay buffer
             current_q_values = th.gather(current_q_values, dim=1, index=replay_data.actions.long())
 
-            # Compute Huber loss (less sensitive to outliers)
-            loss = F.smooth_l1_loss(current_q_values, target_q_values)
+            # Special case when using PrioritizedReplayBuffer (PER)
+            if isinstance(self.replay_buffer, PrioritizedReplayBuffer):
+                # TD error in absolute value
+                td_error = th.abs(current_q_values - target_q_values)
+                # Weighted Huber loss using importance sampling weights
+                loss = (replay_data.weights * th.where(td_error < 1.0, 0.5 * td_error**2, td_error - 0.5)).mean()
+                # Update priorities, they will be proportional to the td error
+                assert replay_data.leaf_nodes_indices is not None, "Node leaf node indices provided"
+                self.replay_buffer.update_priorities(
+                    replay_data.leaf_nodes_indices, td_error, self._current_progress_remaining
+                )
+            else:
+                # Compute Huber loss (less sensitive to outliers)
+                loss = F.smooth_l1_loss(current_q_values, target_q_values)
             losses.append(loss.item())
 
             # Optimize the policy
@@ -242,6 +255,7 @@ class DQN(OffPolicyAlgorithm):
         :return: the model's action and the next state
             (used in recurrent policies)
         """
+        computed=False
         if not deterministic and np.random.rand() < self.exploration_rate:
             if self.policy.is_vectorized_observation(observation):
                 if isinstance(observation, dict):
@@ -253,7 +267,9 @@ class DQN(OffPolicyAlgorithm):
                 action = np.array(self.action_space.sample())
         else:
             action, state = self.policy.predict(observation, state, episode_start, deterministic)
-        return action, state
+            computed=True
+        # add computed flag
+        return action, computed, state
 
     def learn(
         self: SelfDQN,
